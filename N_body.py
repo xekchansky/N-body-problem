@@ -1,11 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from mpl_toolkits.mplot3d import Axes3D
+from tqdm import tqdm
 
 #GRAVITATIONAL CONSTANT
 #G = 6.6743 * 10**(-15) #mass in kg, dist in meters, time in seconds
-G = 1 #???
+G = 1.0 #???
 
 #LAW OF MOTION
 def update_dots(G, dot1, dot2, dt):
@@ -28,8 +26,8 @@ class dot:
         self.position = np.array(position).astype(float)
         self.velocity = np.array(velocity).astype(float)
     
-    def update_position(self):
-        self.position += self.velocity
+    def update_position(self, dt):
+        self.position += self.velocity * dt
         
     def update_velocity(self, force, dt):
         #a = force / self.mass
@@ -65,22 +63,22 @@ class group:
         self.true_COM_history = []
         self.true_COM_history.append((self.COM_position, self.COM_velocity))
         
-    def update(self, max_t, max_iter):
+    def update(self, run_time, num_iterations):
         #updates every dot in group for given time duration and iterations
         #input: 
-        #    max_t - upper time
-        #    max_iter - number of iterarions to which split given time duration
+        #    run_time - time duration for simulation
+        #    num_iterations - number of iterarions to which split given time duration
         #return:
         #    self.dots.position
         #    self.history
         #    self.COM_history
         
         #create timestamps
-        self.ts = np.linspace(0, max_t, max_iter)
+        self.ts = np.linspace(0, run_time, num_iterations+1).astype(float)
         self.dt = self.ts[1] - self.ts[0]
         
         #iterate over timestamps
-        for t in self.ts:
+        for t in tqdm(self.ts):
             for i in range(len(self.dots)):
                 for j in range(i+1, len(self.dots)):
                     d1 = self.dots[i]
@@ -89,15 +87,15 @@ class group:
                     
             #update history of every dot
             for i, dot in enumerate(self.dots):
-                dot.update_position()
+                dot.update_position(self.dt)
                 self.history[i].append(dot.position.copy())
                 
             #update history of COM
             self.COM_history.append(self.calculate_COM())
             
             #update true history of COM
-            COM_init_position, COM_init_velocity = self.COM_history[0]
-            true_COM_position = COM_init_position + COM_init_velocity * t
+            COM_init_position, COM_init_velocity = self.true_COM_history[0]
+            true_COM_position = COM_init_position + (COM_init_velocity * (t + self.dt))
             self.true_COM_history.append((true_COM_position, COM_init_velocity))
                 
     def calculate_COM(self):
@@ -120,9 +118,32 @@ class group:
         return COM_position, COM_velocity
     
     def calculate_COM_residuals(self):
+        #calculates differences between actual and true COM for every timestamp
+        #input:
+        #    self.COM_history
+        #    self.true_COM_history
+        #output:
+        #    self.COM_residuals
         
+        self.COM_position_residuals = []
+        self.COM_velocity_residuals = []
+        for i in range(len(self.ts)):
+            self.COM_position_residuals.append(np.linalg.norm(self.COM_history[i][0] - self.true_COM_history[i][0]))
+            self.COM_velocity_residuals.append(np.linalg.norm(self.COM_history[i][1] - self.true_COM_history[i][1]))
+            
+    def testrun(self, run_time, num_iterations):
+        #runs test
+        #input: 
+        #    run_time - time duration for simulation
+        #    num_iterations - number of iterarions to which split given time duration
+        #return:
+        #    position_residuals
+        #    velocity_residuals
+        #    elapsed_time
         
-class generator():
+        pass
+        
+class generator:
     def __init__(self, m_loc, m_scale, p_loc, p_scale, v_loc, v_scale):
         #mass
         self.m_loc = m_loc
