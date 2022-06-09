@@ -1,21 +1,20 @@
 import numpy as np
 from tqdm import tqdm
 
-#GRAVITATIONAL CONSTANT
-#G = 6.6743 * 10**(-15) #mass in kg, dist in meters, time in seconds
-G = 1.0 #???
-
-#LAW OF MOTION
-def update_dots(G, dot1, dot2, dt):
+from Law_Of_Motion import LOM_Force
+from  BH_Tree import OctTree
+    
+#standart algorithm
+def update_dots(dot1, dot2, dt):
     vec = dot1.position - dot2.position
-    r_pow_2 = sum((vec)**2)
+    r = sum((vec)**2) ** 0.5
     
     #check colision
-    if r_pow_2 < (dot1.radius + dot2.radius)**2:
+    if r < dot1.radius + dot2.radius:
         F = 0 #(ignore colision)
     else:
-        F = G*dot1.mass*dot2.mass/r_pow_2
-        force_vec = (vec * F)/(r_pow_2**0.5)
+        F = LOM_Force(dot1.mass, dot2.mass, r)
+        force_vec = (vec * F)/(r)
         dot1.update_velocity(-force_vec, dt)
         dot2.update_velocity(force_vec, dt)
 
@@ -63,8 +62,8 @@ class group:
         self.true_COM_history = []
         self.true_COM_history.append((self.COM_position, self.COM_velocity))
         
-    def update(self, run_time, num_iterations):
-        #updates every dot in group for given time duration and iterations
+    def update_standart(self, run_time, num_iterations):
+        #updates every dot in group for given time duration and iterations with standart algorithm
         #input: 
         #    run_time - time duration for simulation
         #    num_iterations - number of iterarions to which split given time duration
@@ -83,8 +82,48 @@ class group:
                 for j in range(i+1, len(self.dots)):
                     d1 = self.dots[i]
                     d2 = self.dots[j]
-                    update_dots(G, d1, d2, self.dt)
+                    update_dots(d1, d2, self.dt)
                     
+            #update history of every dot
+            for i, dot in enumerate(self.dots):
+                dot.update_position(self.dt)
+                self.history[i].append(dot.position.copy())
+                
+            #update history of COM
+            self.COM_history.append(self.calculate_COM())
+            
+            #update true history of COM
+            COM_init_position, COM_init_velocity = self.true_COM_history[0]
+            true_COM_position = COM_init_position + (COM_init_velocity * (t + self.dt))
+            self.true_COM_history.append((true_COM_position, COM_init_velocity))
+            
+    def update_barnes_hut(self, run_time, num_iterations, theta=0.0001):
+        #updates every dot in group for given time duration and iterations with Barnes-Hut algorithm
+        #input: 
+        #    run_time - time duration for simulation
+        #    num_iterations - number of iterarions to which split given time duration
+        #return:
+        #    self.dots.position
+        #    self.history
+        #    self.COM_history
+        #create timestamps
+        self.ts = np.linspace(0, run_time, num_iterations+1).astype(float)
+        self.dt = self.ts[1] - self.ts[0]
+        
+        #iterate over timestamps
+        for t in tqdm(self.ts):
+            
+            #get bounds for tree:
+            m = max(self.get_max_coords()) + 1
+            
+            #build octo tree
+            self.Q=OctTree(self.dots,m,-m,m,-m,m,-m)
+            
+            #update dots velocities
+            for dot in self.dots:
+                acceleration=self.Q.forces(dot,theta)
+                dot.velocity += acceleration * self.dt
+            
             #update history of every dot
             for i, dot in enumerate(self.dots):
                 dot.update_position(self.dt)
@@ -131,17 +170,16 @@ class group:
             self.COM_position_residuals.append(np.linalg.norm(self.COM_history[i][0] - self.true_COM_history[i][0]))
             self.COM_velocity_residuals.append(np.linalg.norm(self.COM_history[i][1] - self.true_COM_history[i][1]))
             
-    def testrun(self, run_time, num_iterations):
-        #runs test
-        #input: 
-        #    run_time - time duration for simulation
-        #    num_iterations - number of iterarions to which split given time duration
-        #return:
-        #    position_residuals
-        #    velocity_residuals
-        #    elapsed_time
-        
-        pass
+    def get_max_coords(self):
+        max_x = 0
+        max_y = 0
+        max_z = 0
+        for dot in self.dots:
+            x, y, z = dot.position
+            max_x = max(abs(x), max_x)
+            max_y = max(abs(y), max_y)
+            max_z = max(abs(z), max_z)
+        return max_x, max_y, max_z
         
 class generator:
     def __init__(self, m_loc, m_scale, p_loc, p_scale, v_loc, v_scale):

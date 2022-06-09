@@ -29,7 +29,8 @@ class Experiment:
         
         #run experiment
         start_time = time()
-        self.group.update(run_time=run_time, num_iterations=num_iterations)
+        #self.group.update_standart(run_time=run_time, num_iterations=num_iterations)
+        self.group.update_barnes_hut(run_time=run_time, num_iterations=num_iterations, theta=0.0001)
         elapsed_time = time() - start_time
         
         #agregate metrics
