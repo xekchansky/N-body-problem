@@ -18,12 +18,7 @@ class OctTree():
 
     def build(self, volume_tolerance=1e-10):
         
-        volume = abs(self.b - self.a)*abs(self.d - self.c)*abs(self.f-self.e)
-        if volume < volume_tolerance:
-            print('bruh')
-        if self.n_objects>1 and volume >= volume_tolerance:
-        
-        #if self.n_objects>1:
+        if self.n_objects>1:
             TNW=[]
             TNE=[]
             TSW=[]
@@ -77,7 +72,7 @@ class OctTree():
             for i in range(self.n_objects):
                 xc=xc+self.objects[i].mass*self.objects[i].position[0]
                 yc=yc+self.objects[i].mass*self.objects[i].position[1]
-                yc=yc+self.objects[i].mass*self.objects[i].position[2]
+                zc=zc+self.objects[i].mass*self.objects[i].position[2]
                 m=m+self.objects[i].mass
             self.mass_center=[xc/m,yc/m,zc/m]
             self.mass=m
@@ -87,13 +82,12 @@ class OctTree():
             width=self.a-self.b
             v = self.mass_center - objectI.position
             d = sum((v)**2) ** 0.5
-            if d!=0:
+            #somehow sometimes it applies force to itself if leave check d!=0
+            if d>1e-5:
                 t=width/d
                 if t < theta or self.children[0]==None:
-                    #v = self.mass_center - objectI.position
                     m=self.mass
-                    a=(m*v)/(d**3)
-                    #a = LOM_Force(1, m, d)*v/d
+                    a = LOM_Force(1, m, d)*v/d
                     return a
                 else:
                     a1=self.children[0].forces(objectI,theta)
