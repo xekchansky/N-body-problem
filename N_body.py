@@ -1,4 +1,6 @@
 import numpy as np
+from multiprocessing import Pool
+from functools import partial
 from tqdm import tqdm
 
 from Law_Of_Motion import LOM_Force
@@ -17,6 +19,10 @@ def update_dots(dot1, dot2, dt):
         force_vec = (vec * F)/(r)
         dot1.update_velocity(-force_vec, dt)
         dot2.update_velocity(force_vec, dt)
+        
+def barnes_hut_routine(BH_Tree, dt, theta, dot):
+    acceleration=BH_Tree.forces(dot,theta)
+    dot.velocity += acceleration * dt
 
 class dot:
     def __init__(self, mass=1, position=[0,0,0], velocity=[0,0,0]):
@@ -97,7 +103,7 @@ class group:
             true_COM_position = COM_init_position + (COM_init_velocity * (t + self.dt))
             self.true_COM_history.append((true_COM_position, COM_init_velocity))
             
-    def update_barnes_hut(self, run_time, num_iterations, theta=0.0001):
+    def update_barnes_hut(self, run_time, num_iterations, theta=0.0001, workers=1, time_test=False):
         #updates every dot in group for given time duration and iterations with Barnes-Hut algorithm
         #input: 
         #    run_time - time duration for simulation
@@ -119,24 +125,37 @@ class group:
             #build octo tree
             self.Q=OctTree(self.dots,m,-m,m,-m,m,-m)
             
-            #update dots velocities
-            for dot in self.dots:
-                acceleration=self.Q.forces(dot,theta)
-                dot.velocity += acceleration * self.dt
+            if workers == 1:
+                #update dots velocities
+                for dot in self.dots:
+                    acceleration=self.Q.forces(dot,theta)
+                    dot.velocity += acceleration * self.dt
+            else:
+                #create pool and routine function
+                partial_routine = partial(barnes_hut_routine, BH_Tree=self.Q, dt=self.dt, theta=theta)
+                partial_routine(dot = self.dots[0])
+                p = Pool(workers)
+
+                #update dots velocities parallel
+                p.imap(partial_routine, iterable=self.dots)
+            
             
             #update history of every dot
             for i, dot in enumerate(self.dots):
                 dot.update_position(self.dt)
-                self.history[i].append(dot.position.copy())
+                if not time_test:
+                    self.history[i].append(dot.position.copy())
                 
-            #update history of COM
-            self.COM_history.append(self.calculate_COM())
+            if not time_test:
+                #update history of COM
+                self.COM_history.append(self.calculate_COM())
+
+                #update true history of COM
+                COM_init_position, COM_init_velocity = self.true_COM_history[0]
+                true_COM_position = COM_init_position + (COM_init_velocity * (t + self.dt))
+                self.true_COM_history.append((true_COM_position, COM_init_velocity))
             
-            #update true history of COM
-            COM_init_position, COM_init_velocity = self.true_COM_history[0]
-            true_COM_position = COM_init_position + (COM_init_velocity * (t + self.dt))
-            self.true_COM_history.append((true_COM_position, COM_init_velocity))
-                
+
     def calculate_COM(self):
         #calculates current center of mass
         #input:
@@ -182,7 +201,7 @@ class group:
         return max_x, max_y, max_z
         
 class generator:
-    def __init__(self, m_loc, m_scale, p_loc, p_scale, v_loc, v_scale):
+    def __init__(self, m_loc, m_scale, p_loc, p_scale, v_loc, v_scale, seed=None):
         #mass
         self.m_loc = m_loc
         self.m_scale = m_scale
@@ -193,8 +212,13 @@ class generator:
         self.v_loc = v_loc
         self.v_scale = v_scale
         
+        self.seed=seed
+        
     def generate(self, size):
         #generates array of dots with given size and gaussian distribution
+        
+        if self.seed is not None:
+            np.random.seed(self.seed)
         
         #generate masses
         masses = np.abs(np.random.normal(loc=self.m_loc, scale=self.m_scale, size=size))
